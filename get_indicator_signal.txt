@@ -1,0 +1,110 @@
+                <div style="padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: {signal['color']}15; border-left: 3px solid {signal['color']};">
+                    <span style="font-weight: 500;">{indicator}:</span> {value} 
+                    <span style="float: right; color: {signal['color']};">{signal['icon']} {signal['text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Display volatility indicators
+    with col3:
+        st.markdown(f"**{t_volatility_indicators}**")
+        for indicator in volatility_indicators:
+            if indicator in indicators:
+                value = indicators[indicator]
+                signal = get_indicator_signal(indicator, value)
+                signal['text'] = get_localized_signal(signal['text'])
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: {signal['color']}15; border-left: 3px solid {signal['color']};">
+                    <span style="font-weight: 500;">{indicator}:</span> {value} 
+                    <span style="float: right; color: {signal['color']};">{signal['icon']} {signal['text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Add explanations
+    with st.expander(t_indicator_explanation):
+        st.markdown(indicator_help_text)
+
+def get_indicator_signal(indicator, value):
+    """Get the signal status for a technical indicator"""
+    result = {"icon": "", "text": "", "color": "#757575"}
+    
+    try:
+        # Handle different indicators
+        if indicator == "RSI":
+            value = float(value)
+            if value >= 70:
+                result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+            elif value <= 30:
+                result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif indicator == "MACD":
+            if "bullish" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "bearish" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif "SMA" in indicator or "EMA" in indicator:
+            if "above" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "below" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif indicator == "Bollinger Bands":
+            if "upper" in str(value).lower():
+                result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+            elif "lower" in str(value).lower():
+                result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+            else:
+                result = {"icon": "↔️", "text": "Middle", "color": "#FF9800"}
+        
+        elif indicator == "Stochastic" or indicator == "MFI":
+            try:
+                if isinstance(value, str) and len(value.split()) > 0:
+                    value = float(value.split()[0])
+                else:
+                    value = float(value)
+                    
+                if value >= 80:
+                    result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+                elif value <= 20:
+                    result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+                else:
+                    result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+            except:
+                result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+        
+        elif indicator == "ATR" or indicator == "Standard Deviation":
+            # These are volatility indicators without direct signal interpretation
+            result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+            
+        elif "Trend" in indicator:
+            # For trend indicators that contain text descriptions
+            if "above" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "below" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        else:
+            # Generic handling for other indicators
+            result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+            
+    except Exception as e:
+        # If cannot parse, return default
+        print(f"Error processing indicator {indicator}: {e}")
+        result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+        
+    return result
+
+def multi_stock_analysis_page():
+    """Page for analyzing and comparing multiple stocks"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Create header

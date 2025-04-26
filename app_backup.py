@@ -1,0 +1,1981 @@
+import streamlit as st
+import yfinance as yf
+import plotly.graph_objects as go
+import plotly.express as px
+import torch
+from chronos import ChronosPipeline
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from src.forecast_agent import stock_forecast_agent, get_stock_forecast, process_multiple_stocks
+import subprocess
+import sys
+import traceback
+import time
+from typing import Dict, List, Tuple, Union, Optional
+import os
+import re
+
+# Initialize session state
+if 'language' not in st.session_state:
+    # Default to English, or get from environment
+    st.session_state['language'] = os.environ.get("LANGUAGE", "en")
+
+# Set page configuration
+st.set_page_config(
+    page_title="AI Stock Forecaster",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Add custom CSS for a better UI/UX experience
+st.markdown("""
+<style>
+    /* Modern color scheme */
+    :root {
+        --primary-color: #1E88E5;
+        --secondary-color: #7B1FA2;
+        --accent-color: #FF9800;
+        --background-color: #f8f9fa;
+        --card-background: #ffffff;
+        --text-color: #212121;
+        --light-text: #757575;
+        --success-color: #4CAF50;
+        --warning-color: #FF9800;
+        --danger-color: #F44336;
+    }
+    
+    /* Overall styling */
+    .main {
+        background-color: var(--background-color);
+        padding: 1rem;
+        border-radius: 10px;
+    }
+    
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid rgba(30, 136, 229, 0.2);
+    }
+    
+    /* Card styling */
+    .stCard {
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: none;
+        background-color: var(--card-background);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .stCard:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Button styling */
+    .stButton>button {
+        border-radius: 50px;
+        font-weight: 500;
+        padding: 0.5rem 1.5rem;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Input field styling */
+    .stTextInput>div>div>input, .stSelectbox>div>div>div, .stMultiselect>div>div>div {
+        border-radius: 8px;
+        border: 1px solid #E0E0E0;
+        padding: 0.75rem 1rem;
+    }
+    
+    .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus, .stMultiselect>div>div>div:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(30, 136, 229, 0.2);
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg {
+        background-color: var(--card-background);
+        border-right: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Chart styling */
+    .js-plotly-plot {
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        padding: 1rem;
+        background-color: var(--card-background);
+    }
+    
+    /* Analysis card */
+    .analysis-card {
+        background-color: var(--card-background);
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        border-left: 5px solid var(--primary-color);
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .main-header {
+        font-size: 1.8rem;
+        }
+    }
+    
+    /* Spinner animation override */
+    .stSpinner>div>div {
+        border-top-color: var(--primary-color) !important;
+    }
+    
+    /* Language toggle button */
+    .language-toggle {
+        display: inline-flex;
+        align-items: center;
+        background-color: rgba(30, 136, 229, 0.1);
+        border-radius: 50px;
+        padding: 0.3rem 0.8rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .language-toggle:hover {
+        background-color: rgba(30, 136, 229, 0.2);
+    }
+    
+    .language-icon {
+        font-size: 1.2rem;
+        margin-right: 0.5rem;
+    }
+    
+    /* AI agent visual identity */
+    .ai-agent-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .ai-agent-logo {
+        background: linear-gradient(135deg, #1E88E5, #7B1FA2);
+        color: white;
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        margin-right: 1rem;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .ai-agent-title {
+        flex: 1;
+    }
+    
+    .ai-agent-title h1 {
+        margin: 0;
+        padding: 0;
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: var(--text-color);
+    }
+    
+    .ai-agent-title p {
+        margin: 0;
+        padding: 0;
+        color: var(--light-text);
+        font-size: 1rem;
+    }
+    
+    /* Interactive elements pulse animation */
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(30, 136, 229, 0.4);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(30, 136, 229, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(30, 136, 229, 0);
+        }
+    }
+    
+    .pulse-element {
+        animation: pulse 2s infinite;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+def check_ollama_installation():
+    """Check if Ollama is installed and running locally"""
+    try:
+        import ollama
+        # Try to list models to verify Ollama server is running
+        ollama.list()
+        return True
+    except Exception as e:
+        error_msg = str(e)
+        st.sidebar.error(f"Ollama error: {error_msg}")
+        
+        if "connection refused" in error_msg.lower():
+            st.sidebar.info("Ollama service is not running. Please start the Ollama service.")
+        elif "module" in error_msg.lower() and "not found" in error_msg.lower():
+            st.sidebar.info("Ollama Python package is not installed. Installing it now...")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "ollama-python==0.1.8"])
+                st.sidebar.success("Successfully installed ollama-python. Please refresh the page.")
+            except Exception as install_err:
+                st.sidebar.error(f"Failed to install ollama-python: {str(install_err)}")
+        
+        st.sidebar.info("Make sure Ollama is installed and running. Visit https://ollama.com for installation instructions.")
+        st.sidebar.info("After installing Ollama, run 'ollama pull llama3' to download the model.")
+        return False
+
+def check_device_compatibility():
+    """Check available computation devices"""
+    device_info = "Available devices:\n"
+    
+    if torch.cuda.is_available():
+        device_info += f"- CUDA (GPU): Yes, {torch.cuda.get_device_name(0)}\n"
+    else:
+        device_info += "- CUDA (GPU): No\n"
+        
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device_info += "- MPS (Apple Silicon): Yes\n"
+    else:
+        device_info += "- MPS (Apple Silicon): No\n"
+        
+    device_info += "- CPU: Yes"
+    
+    return device_info
+
+def show_supported_tickers():
+    """Show information about supported stock tickers"""
+    with st.expander("Supported Stock Tickers"):
+        st.markdown("""
+        ### How to Specify Stock Symbols
+        
+        #### Major US Stocks
+        - Apple: AAPL
+        - Microsoft: MSFT
+        - Google: GOOGL
+        - Amazon: AMZN
+        - Tesla: TSLA
+        - Nvidia: NVDA
+        - Meta: META
+        
+        #### Vietnamese Stocks
+        Vietnamese stocks require the ".VN" suffix. Common Vietnamese stocks include:
+        - Vingroup: VIC.VN
+        - Vinhomes: VHM.VN
+        - Vietcombank: VCB.VN
+        - Vinamilk: VNM.VN
+        - FPT Corporation: FPT.VN
+        - Hoa Phat Group: HPG.VN
+        - VietinBank: CTG.VN
+        - BIDV: BID.VN
+        - Vietnam Airlines: HVN.VN
+        - PetroVietnam: PVS.VN or GAS.VN
+        - Saigon Securities Inc: SSI.VN
+        - MBBank: MBB.VN
+        - ACB Bank: ACB.VN
+        - Viettel Post: VTP.VN
+        - Masan Group: MSN.VN
+        
+        **Important Note for Vietnamese Stocks**: 
+        - Make sure to use the correct suffix ".VN" for Vietnamese stocks
+        - Some Vietnamese stocks may not be available on Yahoo Finance
+        - Some Vietnamese stocks may use different symbols than commonly known, always verify the symbol
+        
+        #### International Stocks
+        - Samsung: 005930.KS
+        - Toyota: TM
+        - Alibaba: BABA
+        
+        #### Multiple Stocks
+        You can analyze multiple stocks by mentioning them in your query:
+        - "Compare Apple, Microsoft, and Google stock forecasts for the next 15 days"
+        
+        The app will try to recognize company names and convert them to proper ticker symbols.
+        """)
+
+def display_metrics_dashboard(metrics: Dict):
+    """Display performance metrics in a dashboard layout"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    st.markdown('<div class="sub-header">Performance Metrics</div>', unsafe_allow_html=True)
+    
+    # Add a data source badge with appropriate color
+    if 'data_source' in metrics:
+        data_source = metrics['data_source']
+        if data_source == 'yahoo':
+            badge_color = "#4CAF50"  # Green for primary source
+            source_text = "Yahoo Finance"
+        elif data_source.startswith('alphavantage'):
+            badge_color = "#2196F3"  # Blue for alpha vantage
+            source_text = "Alpha Vantage"
+            if data_source == 'alphavantage_quote':
+                source_text += " (Limited)"
+        elif data_source == 'stooq':
+            badge_color = "#FF9800"  # Orange for stooq
+            source_text = "Stooq"
+        else:
+            badge_color = "#9E9E9E"  # Gray for unknown
+            source_text = data_source
+            
+        st.markdown(
+            f'<div style="display: inline-block; background-color: {badge_color}; color: white; padding: 4px 8px; '
+            f'border-radius: 4px; font-size: 0.8em; margin-bottom: 10px;">Data Source: {source_text}</div>', 
+            unsafe_allow_html=True
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Round values for display
+    if 'mae' in metrics:
+        mae = round(metrics['mae'], 2)
+        col1.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{mae}</div>
+            <div class="metric-label">Mean Absolute Error</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'rmse' in metrics:
+        rmse = round(metrics['rmse'], 2)
+        col2.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{rmse}</div>
+            <div class="metric-label">Root Mean Square Error</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'direction_accuracy' in metrics:
+        accuracy = round(metrics['direction_accuracy'] * 100, 1)
+        col3.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{accuracy}%</div>
+            <div class="metric-label">Direction Accuracy</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'forecast_volatility' in metrics:
+        volatility = round(metrics['forecast_volatility'], 2)
+        col4.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{volatility}</div>
+            <div class="metric-label">Forecast Volatility</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Additional metrics in second row
+    metric_row2 = st.columns(4)
+    
+    # Data Source and Historical Days
+    if 'data_source' in metrics:
+        data_source = metrics['data_source']
+        metric_row2[0].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{data_source}</div>
+            <div class="metric-label">Data Source</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'historical_days' in metrics:
+        days = metrics['historical_days']
+        metric_row2[1].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{days}</div>
+            <div class="metric-label">Historical Days</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # Mean Absolute Percentage Error if available
+    if 'mape' in metrics:
+        mape = round(metrics['mape'], 2)
+        metric_row2[2].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{mape}%</div>
+            <div class="metric-label">MAPE</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # Validation status
+    if 'validation_status' in metrics:
+        status = metrics['validation_status']
+        status_color = "#4CAF50" if status == 'completed' else "#FF9800"  # Green if completed, orange otherwise
+        metric_row2[3].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value" style="color: {status_color};">{status}</div>
+            <div class="metric-label">Validation Status</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Display actual symbol used if different from requested
+    if 'actual_symbol' in metrics and 'requested_symbol' in metrics:
+        if metrics['actual_symbol'] != metrics['requested_symbol']:
+            st.info(f"Note: Requested symbol '{metrics['requested_symbol']}' was redirected to '{metrics['actual_symbol']}'")
+    
+    # Processing times
+    st.markdown('<div class="sub-header">Processing Times</div>', unsafe_allow_html=True)
+    
+    time_cols = st.columns(4)
+    
+    if 'data_fetch_time' in metrics:
+        fetch_time = round(metrics['data_fetch_time'] * 1000, 1)
+        time_cols[0].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{fetch_time} ms</div>
+            <div class="metric-label">Data Fetch Time</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'forecast_time' in metrics:
+        pred_time = round(metrics['forecast_time'] * 1000, 1)
+        time_cols[1].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{pred_time} ms</div>
+            <div class="metric-label">Prediction Time</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'agent_processing_time' in metrics:
+        agent_time = round(metrics['agent_processing_time'] * 1000, 1)
+        time_cols[2].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{agent_time} ms</div>
+            <div class="metric-label">Agent Processing</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if 'total_time' in metrics:
+        total = round(metrics['total_time'] * 1000, 1)
+        time_cols[3].markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{total} ms</div>
+            <div class="metric-label">Total Processing</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # Store successful forecast metrics in session state for benchmarking
+    if 'mae' in metrics and 'rmse' in metrics and 'direction_accuracy' in metrics:
+        if 'benchmark_results' not in st.session_state:
+            st.session_state['benchmark_results'] = []
+            
+        # Check if we already have this symbol in the benchmark results
+        symbol = metrics.get('actual_symbol', metrics.get('requested_symbol', 'Unknown'))
+        existing_idx = None
+        
+        for idx, result in enumerate(st.session_state['benchmark_results']):
+            if result.get('actual_symbol') == symbol:
+                existing_idx = idx
+                break
+                
+        # Prepare benchmark metrics
+        benchmark_metrics = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'requested_symbol': metrics.get('requested_symbol', 'Unknown'),
+            'actual_symbol': metrics.get('actual_symbol', symbol),
+            'data_source': metrics.get('data_source', 'yahoo'),
+            'historical_days': metrics.get('historical_days', 0),
+            'mae': metrics.get('mae', 0),
+            'rmse': metrics.get('rmse', 0),
+            'mape': metrics.get('mape', 0),
+            'direction_accuracy': metrics.get('direction_accuracy', 0),
+            'total_time': metrics.get('total_time', 0) * 1000,  # ms
+            'validation_status': metrics.get('validation_status', 'unknown'),
+            'device': metrics.get('device', 'unknown')
+        }
+        
+        # Update or append
+        if existing_idx is not None:
+            st.session_state['benchmark_results'][existing_idx] = benchmark_metrics
+        else:
+            st.session_state['benchmark_results'].append(benchmark_metrics)
+
+def display_ai_analysis(metrics):
+    """Display AI-generated analysis summary in a nice card format"""
+    if 'forecast_summary' not in metrics:
+        return
+    
+    summary_data = metrics['forecast_summary']
+    
+    # Get current language
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Colors based on trend direction
+    if summary_data['forecast_trend'] == 'upward':
+        trend_color = '#4CAF50'  # Green for upward trend
+        trend_icon = '↗️'
+    elif summary_data['forecast_trend'] == 'downward':
+        trend_color = '#F44336'  # Red for downward trend
+        trend_icon = '↘️'
+    else:
+        trend_color = '#FF9800'  # Orange for sideways
+        trend_icon = '↔️'
+    
+    # Format percentage
+    percent_change = summary_data['percent_change']
+    percent_str = f"{percent_change:.2f}%" if percent_change != 0 else "N/A"
+    
+    # Confidence indicator
+    confidence = summary_data['confidence_level']
+    if confidence == 'high' or confidence == 'cao':
+        confidence_indicator = "🟢 " + (t.get('high_confidence', 'High') if lang == 'en' else 'Cao')
+    elif confidence == 'moderate' or confidence == 'trung bình':
+        confidence_indicator = "🟡 " + (t.get('moderate_confidence', 'Moderate') if lang == 'en' else 'Trung bình')
+    else:
+        confidence_indicator = "🔴 " + (t.get('low_confidence', 'Low') if lang == 'en' else 'Thấp')
+    
+    # Translate trend direction
+    trend_direction = summary_data['forecast_trend']
+    if trend_direction == 'upward':
+        trend_text = t.get('upward_trend', 'Upward') if lang == 'en' else 'Đi lên'
+    elif trend_direction == 'downward':
+        trend_text = t.get('downward_trend', 'Downward') if lang == 'en' else 'Đi xuống'
+    else:
+        trend_text = t.get('sideways_trend', 'Sideways') if lang == 'en' else 'Đi ngang'
+    
+    # Translate box titles
+    projected_change = t.get('projected_change', 'Projected Change') if lang == 'en' else 'Thay đổi Dự báo'
+    trend_direction_text = t.get('trend_direction', 'Trend Direction') if lang == 'en' else 'Hướng Xu hướng'
+    confidence_level = t.get('confidence_level', 'Confidence Level') if lang == 'en' else 'Mức Độ Tin Cậy'
+    
+    # Translate header
+    ai_forecast_analysis = t.get('ai_forecast_analysis', 'AI Forecast Analysis') if lang == 'en' else 'Phân tích Dự báo AI'
+    
+    # Header with icon and trend color
+    st.markdown(f"""
+    <div style="background-color: #f5f5f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid {trend_color};">
+        <h3 style="margin-top: 0; color: {trend_color};">{trend_icon} {ai_forecast_analysis}</h3>
+        <div style="display: flex; margin-bottom: 10px;">
+            <div style="flex: 1; padding-right: 10px;">
+                <small style="color: #666;">{projected_change}</small><br>
+                <span style="font-size: 1.2em; color: {trend_color};">{percent_str}</span>
+            </div>
+            <div style="flex: 1; padding-right: 10px;">
+                <small style="color: #666;">{trend_direction_text}</small><br>
+                <span style="font-size: 1.2em; color: {trend_color};">{trend_text}</span>
+            </div>
+            <div style="flex: 1;">
+                <small style="color: #666;">{confidence_level}</small><br>
+                <span style="font-size: 1.2em;">{confidence_indicator}</span>
+            </div>
+        </div>
+        <p style="margin-bottom: 0; line-height: 1.5;">{summary_data['summary']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def plot_forecast_chart(historical_data, forecast_data, forecast_dates, stock_symbol, confidence_interval=80):
+    """Create an interactive Plotly chart showing historical data and forecast with confidence intervals"""
+    # Get language for translations
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Get data
+    historical_dates = historical_data['ds']
+    historical_prices = historical_data['y']
+    
+    # Determine confidence interval bounds based on user selection
+    if confidence_interval == 50:
+        lower_bound = 'q25'
+        upper_bound = 'q75'
+    elif confidence_interval == 80:
+        lower_bound = 'q10'
+        upper_bound = 'q90' 
+    elif confidence_interval == 90:
+        lower_bound = 'q5'
+        upper_bound = 'q95'
+    else:
+        lower_bound = 'forecast_lower'
+        upper_bound = 'forecast_high'
+    
+    # Translate labels
+    historical_prices_label = t.get('historical_prices', 'Historical Prices') if lang == 'en' else 'Giá Lịch sử'
+    forecast_median_label = t.get('forecast_median', 'Forecast (Median)') if lang == 'en' else 'Dự báo (Trung vị)'
+    upper_ci_label = t.get('upper_ci', f'Upper {confidence_interval}% CI') if lang == 'en' else f'Biên trên {confidence_interval}% CI'
+    lower_ci_label = t.get('lower_ci', f'Lower {confidence_interval}% CI') if lang == 'en' else f'Biên dưới {confidence_interval}% CI'
+    forecast_start_label = t.get('forecast_start', 'Forecast Start') if lang == 'en' else 'Bắt đầu Dự báo'
+    chart_title = f'{stock_symbol} {t.get("stock_price_forecast", "Stock Price Forecast")}'
+    date_label = t.get('date', 'Date') if lang == 'en' else 'Ngày'
+    price_label = t.get('price', 'Price') if lang == 'en' else 'Giá'
+    
+    # Date format template
+    date_template = t.get('date_template', 'Date: %{x}<br>Price: %{y:.2f}') if lang == 'en' else 'Ngày: %{x}<br>Giá: %{y:.2f}'
+    forecast_template = t.get('forecast_template', 'Date: %{x}<br>Median Forecast: %{y:.2f}') if lang == 'en' else 'Ngày: %{x}<br>Dự báo Trung vị: %{y:.2f}'
+    upper_template = t.get('upper_template', 'Date: %{x}<br>Upper Bound: %{y:.2f}') if lang == 'en' else 'Ngày: %{x}<br>Biên trên: %{y:.2f}'
+    lower_template = t.get('lower_template', 'Date: %{x}<br>Lower Bound: %{y:.2f}') if lang == 'en' else 'Ngày: %{x}<br>Biên dưới: %{y:.2f}'
+        
+    # Create the plot
+    fig = go.Figure()
+    
+    # Add historical prices
+    fig.add_trace(
+        go.Scatter(
+            x=historical_dates,
+            y=historical_prices,
+            name=historical_prices_label,
+            line=dict(color='#1976D2', width=2),
+            hovertemplate=date_template + '<extra></extra>'
+        )
+    )
+    
+    # Add forecast median
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=forecast_data['forecast_median'],
+            name=forecast_median_label,
+            line=dict(color='#7B1FA2', width=2, dash='dash'),
+            hovertemplate=forecast_template + '<extra></extra>'
+        )
+    )
+    
+    # Add confidence interval
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=forecast_data[upper_bound],
+            name=upper_ci_label,
+            line=dict(width=0),
+            hovertemplate=upper_template + '<extra></extra>'
+        )
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=forecast_data[lower_bound],
+            name=lower_ci_label,
+            fill='tonexty',
+            fillcolor='rgba(123, 31, 162, 0.2)',
+            line=dict(width=0),
+            hovertemplate=lower_template + '<extra></extra>'
+        )
+    )
+
+    # Add a vertical line at the last historical date to separate history from forecast
+    last_historical_date = historical_dates.iloc[-1]
+
+    # Use add_shape instead of add_vline for better type compatibility
+    fig.add_shape(
+        type="line",
+        x0=last_historical_date,
+        x1=last_historical_date,
+        y0=0,
+        y1=1,
+        yref="paper",
+        line=dict(color="gray", width=1, dash="dash"),
+    )
+
+    # Add annotation for forecast start
+    fig.add_annotation(
+        x=last_historical_date,
+        y=1,
+        yref="paper",
+        text=forecast_start_label,
+        showarrow=False,
+        xanchor="center",
+        yanchor="bottom",
+        bgcolor="rgba(255, 255, 255, 0.8)",
+        font=dict(size=10)
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title=chart_title,
+        xaxis_title=date_label,
+        yaxis_title=price_label,
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        ),
+        margin=dict(l=0, r=0, t=40, b=0),
+        height=500,
+    )
+    
+    # Display chart
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Chart explanation in the right language
+    blue_line = t.get('blue_line', 'Blue line') if lang == 'en' else 'Đường màu xanh dương'
+    purple_dashed = t.get('purple_dashed', 'Purple dashed line') if lang == 'en' else 'Đường đứt nét màu tím'
+    purple_shaded = t.get('purple_shaded', 'Purple shaded area') if lang == 'en' else 'Vùng bóng màu tím'
+    vertical_dashed = t.get('vertical_dashed', 'Vertical dashed line') if lang == 'en' else 'Đường đứt nét dọc'
+    historical_data_text = t.get('historical_data_text', 'Historical stock price data') if lang == 'en' else 'Dữ liệu giá cổ phiếu lịch sử'
+    predicted_median = t.get('predicted_median', 'Predicted median price') if lang == 'en' else 'Giá trung vị dự báo'
+    confidence_interval_text = t.get('confidence_interval_text', 'confidence interval') if lang == 'en' else 'khoảng tin cậy'
+    separates_text = t.get('separates_text', 'Separates historical data from forecast') if lang == 'en' else 'Phân tách dữ liệu lịch sử từ dự báo'
+    chart_overview = t.get('chart_overview', 'Chart Overview') if lang == 'en' else 'Tổng quan Biểu đồ'
+    
+    st.markdown(f"""
+    **{chart_overview}:**
+    - **{blue_line}**: {historical_data_text}
+    - **{purple_dashed}**: {predicted_median}
+    - **{purple_shaded}**: {confidence_interval}% {confidence_interval_text}
+    - **{vertical_dashed}**: {separates_text}
+    """)
+
+def try_alternative_vn_symbols(symbol: str):
+    """Try alternative symbols for Vietnamese stocks if the original fails"""
+    # Common alternatives for Vietnamese stocks
+    vn_alternatives = {
+        'FPT.VN': ['FPT', 'FPT:VN', 'FPTCORP.VN'],
+        'VIC.VN': ['VIC', 'VINGROUP.VN'],
+        'VHM.VN': ['VHM', 'VINHOMES.VN'],
+        'VCB.VN': ['VCB', 'VIETCOMBANK.VN'],
+        'HVN.VN': ['HVN', 'VIETNAMAIRLINES.VN'],
+        'HPG.VN': ['HPG', 'HOAPHAT.VN'],
+        'PVS.VN': ['PVS', 'PVD.VN', 'GAS.VN']
+    }
+    
+    # Strip the .VN suffix if present
+    base_symbol = symbol.replace('.VN', '')
+    
+    # Check if base symbol + .VN is in our alternatives
+    if base_symbol + '.VN' in vn_alternatives:
+        return vn_alternatives[base_symbol + '.VN']
+    
+    # Check if the full symbol is in our alternatives
+    if symbol in vn_alternatives:
+        return vn_alternatives[symbol]
+    
+    # Default alternatives to try
+    if '.VN' not in symbol:
+        return [symbol + '.VN']
+    else:
+        return [symbol.replace('.VN', '')]
+    
+    return []
+
+def sidebar_data_source_info():
+    """Display information about data sources in the sidebar"""
+    with st.sidebar.expander("💾 Data Sources"):
+        st.markdown("""
+        **Primary:** Yahoo Finance
+        - Comprehensive global market data
+        - Most reliable for US stocks
+        
+        **Alternative 1:** Alpha Vantage
+        - Good coverage for Vietnamese stocks
+        - Detailed historical data
+        
+        **Alternative 2:** Stooq
+        - Additional market coverage
+        - Used when other sources fail
+        """)
+        
+        # Link to get API key
+        st.markdown("""
+        📢 **Note:** For best results with Vietnamese stocks, 
+        the system automatically tries multiple data sources 
+        and formats.
+        """)
+
+def display_stock_error(stock_symbol, error_text):
+    """Display a helpful error message with troubleshooting suggestions"""
+    st.error(f"Error retrieving data for {stock_symbol}")
+    
+    with st.expander("Error details and troubleshooting"):
+        st.code(error_text, language="text")
+        
+        st.markdown("### Troubleshooting Suggestions:")
+        
+        if '.VN' in stock_symbol or any(ext in stock_symbol for ext in ['.HOSE', '.HNX', '.UPCOM']):
+            st.markdown("""
+            **For Vietnamese stocks:**
+            - Try different formats (e.g., FPT, FPT.VN, FPT.HOSE)
+            - Some Vietnamese stocks may have limited data availability
+            - Check the current status of the exchange
+            """)
+        else:
+            st.markdown("""
+            **For international stocks:**
+            - Verify the ticker symbol is correct
+            - Try adding the correct exchange suffix if applicable
+            - Check if the stock is actively traded
+            """)
+        
+        st.markdown("""
+        **General tips:**
+        - Use company names instead of symbols in your query
+        - Try a different time period
+        - Wait a few minutes and try again (API limits may apply)
+        """)
+
+def main_forecast_page():
+    """Main page with forecasting functionality"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Create modern AI Agent header
+    st.markdown(f"""
+    <div class="ai-agent-header">
+        <div class="ai-agent-logo pulse-element">📈</div>
+        <div class="ai-agent-title">
+            <h1>{t["title"]}</h1>
+            <p>{t["subtitle"]}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Input form with modern styling
+    st.markdown("""
+    <div class="stCard" style="padding: 1.5rem;">
+    """, unsafe_allow_html=True)
+    
+    # More visually appealing input field with AI agent style
+    st.markdown(f"""
+    <style>
+    .ai-input-container {{
+        position: relative;
+        margin-bottom: 1.5rem;
+    }}
+    .ai-input-icon {{
+        position: absolute;
+        left: 15px;
+        top: 14px;
+        font-size: 1.2rem;
+        color: rgba(30, 136, 229, 0.7);
+    }}
+    .ai-input-label {{
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #333;
+    }}
+    </style>
+    <div class="ai-input-container">
+        <div class="ai-input-label">{t["prompt_label"]}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    prompt = st.text_input(
+        "",
+        placeholder=t["prompt_placeholder"],
+        label_visibility="collapsed",
+        help=t.get("input_help", "Enter your query in natural language. Our AI will analyze and forecast the requested stock.")
+    )
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        confidence_interval = st.select_slider(
+            t["confidence_interval"],
+            options=[50, 80, 90, 95],
+            value=st.session_state.get('confidence_interval', 80),
+            help=t.get("ci_help", "Controls the width of prediction range")
+        )
+        st.session_state['confidence_interval'] = confidence_interval
+    
+    with col2:
+        enable_batch = st.checkbox(
+            t.get("batch_processing", "Enable batch processing"),
+            value=st.session_state.get('batch_processing', False),
+            help=t.get("batch_help", "Process multiple stocks simultaneously")
+        )
+        st.session_state['batch_processing'] = enable_batch
+    
+    with col3:
+        use_advanced = st.checkbox(
+            t.get("advanced_analysis", "Advanced Analysis"),
+            value=st.session_state.get('advanced_analysis', True),
+            help=t.get("advanced_help", "Include technical indicators and trend analysis")
+        )
+        st.session_state['advanced_analysis'] = use_advanced
+    
+    st.markdown("""
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Process forecast when input is provided
+    if prompt:
+        try:
+            # Custom animated loader
+            loader_html = f"""
+            <div style="display: flex; align-items: center; margin: 20px 0; background-color: rgba(30, 136, 229, 0.1); padding: 15px; border-radius: 10px;">
+                <div style="margin-right: 15px; width: 30px; height: 30px; position: relative;">
+                    <div style="position: absolute; border: 3px solid rgba(30, 136, 229, 0.3); border-radius: 50%; height: 30px; width: 30px; animation: pulse 1.5s ease-out infinite;"></div>
+                    <div style="position: absolute; border: 3px solid rgba(30, 136, 229, 0.8); border-top-color: transparent; border-radius: 50%; height: 30px; width: 30px; animation: spin 1s linear infinite;"></div>
+                </div>
+                <div>
+                    <div style="font-weight: 500; margin-bottom: 3px;">{t["processing"]}</div>
+                    <div style="font-size: 0.85rem; opacity: 0.8;">{t.get("processing_subtext", "Analyzing market data and generating AI predictions...")}</div>
+                </div>
+            </div>
+
+            <style>
+            @keyframes spin {{
+                0% {{ transform: rotate(0deg); }}
+                100% {{ transform: rotate(360deg); }}
+            }}
+            
+            @keyframes pulse {{
+                0% {{ transform: scale(0.8); opacity: 0.8; }}
+                50% {{ transform: scale(1.1); opacity: 0.2; }}
+                100% {{ transform: scale(0.8); opacity: 0.8; }}
+            }}
+            </style>
+            """
+            
+            loader_placeholder = st.empty()
+            loader_placeholder.markdown(loader_html, unsafe_allow_html=True)
+            
+            # Get forecast data - pass the advanced_analysis flag
+            os.environ["USE_ADVANCED_ANALYSIS"] = "true" if use_advanced else "false"
+            forecast, historical_data, metrics = stock_forecast_agent(prompt)
+            
+            # Remove loader once processing is complete
+            loader_placeholder.empty()
+            
+            # Format dates for forecast
+            last_date = historical_data['ds'].iloc[-1]
+            forecast_dates = [last_date + timedelta(days=i+1) for i in range(len(forecast))]
+            
+            # Get confidence interval from session state
+            confidence_interval = st.session_state.get('confidence_interval', 80)
+            
+            # Success message with animation
+            st.markdown(f"""
+            <div style="background-color: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #4CAF50; animation: slide-in 0.5s ease-out;">
+                <div style="font-weight: 500; color: #4CAF50;">
+                    ✅ {t["forecast_success"].format(
+                    metrics.get('actual_symbol', metrics.get('requested_symbol')),
+                    len(forecast)
+                    )}
+                </div>
+            </div>
+            
+            <style>
+            @keyframes slide-in {{
+                0% {{ opacity: 0; transform: translateY(-20px); }}
+                100% {{ opacity: 1; transform: translateY(0); }}
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display AI analysis
+            display_ai_analysis(metrics)
+            
+            # Create tabs for different views
+            tab_labels = [
+                t.get("forecast_chart", "Forecast Chart"), 
+                t.get("data_tab", "Data"), 
+                t.get("metrics_tab", "Metrics"),
+                t.get("technical_indicators", "Technical Indicators")
+            ]
+            
+            chart_tab, data_tab, metrics_tab, technical_tab = st.tabs(tab_labels)
+            
+            with chart_tab:
+                # Plot the forecast chart
+                plot_forecast_chart(
+                    historical_data, 
+                    forecast, 
+                    forecast_dates, 
+                    metrics.get('actual_symbol', metrics.get('requested_symbol')),
+                    confidence_interval
+                )
+            
+            # Add chart interactivity guidance
+            st.markdown(f"""
+            <div style="background-color: rgba(30, 136, 229, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px;">
+                <small>💡 {t.get('chart_tip', 'Tip: Use mouse to zoom, pan, and hover for precise values. Double-click to reset view.')}</small>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            with data_tab:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader(t.get("historical_data_title", "Historical Data (Last 10 days)"))
+                    historical_display = historical_data.tail(10).reset_index(drop=True)
+                    # Rename columns for display
+                    historical_display = historical_display.rename(columns={
+                        'ds': t.get('date', 'Date'),
+                        'y': t.get('price', 'Price')
+                    })
+                    st.dataframe(historical_display, use_container_width=True)
+                
+                with col2:
+                    st.subheader(t.get("forecast_data", "Forecast Data"))
+                    forecast_df = pd.DataFrame({
+                        t.get("date", "Date"): forecast_dates,
+                        t.get("lower_bound", "Lower Bound"): forecast["forecast_lower"],
+                        t.get("median_forecast", "Median Forecast"): forecast["forecast_median"],
+                        t.get("upper_bound", "Upper Bound"): forecast["forecast_high"]
+                    })
+                    st.dataframe(forecast_df, use_container_width=True)
+            
+            with metrics_tab:
+                if metrics:
+                    display_metrics_dashboard(metrics)
+            
+            with technical_tab:
+                # Add the historical_data to metrics so technical indicators can be calculated if needed
+                if 'technical_indicators' not in metrics and use_advanced:
+                    metrics['historical_data'] = historical_data
+                    
+                # Display technical indicators
+                display_technical_indicators(metrics)
+                
+                # Show explanation of how technical indicators are used in the forecast
+                if use_advanced:
+                    st.markdown(f"""
+                    <div style="padding: 15px; border-radius: 5px; background-color: rgba(76, 175, 80, 0.1); margin-top: 20px;">
+                        <p><strong>💡 {t.get("tech_indicators_usage", "How indicators influence the forecast:")}</strong></p>
+                        <p>{t.get("tech_indicators_explanation", "The AI forecasting system analyzes these technical indicators alongside historical price data to generate more accurate predictions. When indicators show strong signals (like oversold RSI or bullish MACD), they're weighted in the forecast algorithm.")}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+        except Exception as e:
+            st.error(f"{t.get('error_title', 'Error Processing Forecast')}: {str(e)}")
+            with st.expander(t.get("error_details", "Error Details")):
+                st.code(traceback.format_exc(), language="python")
+
+def display_technical_indicators(metrics):
+    """Display technical indicators in a visually appealing format"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Default translations
+    t_technical_analysis = t.get("technical_analysis", "Technical Analysis")
+    t_trend_indicators = t.get("trend_indicators", "Trend Indicators")
+    t_momentum_indicators = t.get("momentum_indicators", "Momentum Indicators")
+    t_volatility_indicators = t.get("volatility_indicators", "Volatility Indicators")
+    t_indicator_explanation = t.get("indicator_explanation", "What do these indicators mean?")
+    
+    # Translations for indicator signals
+    t_overbought = t.get("overbought", "Overbought") if lang == 'en' else "Quá mua"
+    t_oversold = t.get("oversold", "Oversold") if lang == 'en' else "Quá bán"
+    t_neutral = t.get("neutral", "Neutral") if lang == 'en' else "Trung tính"
+    t_bullish = t.get("bullish", "Bullish") if lang == 'en' else "Tăng giá"
+    t_bearish = t.get("bearish", "Bearish") if lang == 'en' else "Giảm giá"
+    t_info = t.get("info", "Info") if lang == 'en' else "Thông tin"
+    t_middle = t.get("middle", "Middle") if lang == 'en' else "Trung bình"
+    
+    # Help text in both languages
+    indicator_help_en = """
+    - **SMA (Simple Moving Average)**: Average price over a specific time period
+    - **EMA (Exponential Moving Average)**: Weighted average that gives more importance to recent prices
+    - **MACD (Moving Average Convergence Divergence)**: Trend-following momentum indicator
+    - **RSI (Relative Strength Index)**: Measures the speed and change of price movements (0-100)
+    - **Stochastic Oscillator**: Compares a closing price to its price range over a period (0-100)
+    - **MFI (Money Flow Index)**: Volume-weighted RSI that measures buying and selling pressure (0-100)
+    - **Bollinger Bands**: Volatility bands placed above and below a moving average
+    - **ATR (Average True Range)**: Market volatility indicator
+    - **Standard Deviation**: Measures the dispersion of a dataset relative to its mean
+    """
+    
+    indicator_help_vi = """
+    - **SMA (Trung bình động đơn giản)**: Giá trung bình trong một khoảng thời gian cụ thể
+    - **EMA (Trung bình động hàm mũ)**: Trung bình có trọng số, ưu tiên giá gần đây
+    - **MACD (Phân kỳ hội tụ trung bình động)**: Chỉ báo động lượng theo xu hướng
+    - **RSI (Chỉ số sức mạnh tương đối)**: Đo tốc độ và sự thay đổi của giá (0-100)
+    - **Stochastic (Chỉ báo Stochastic)**: So sánh giá đóng cửa với biên độ giá trong một khoảng thời gian (0-100)
+    - **MFI (Chỉ số dòng tiền)**: RSI có trọng số khối lượng đo áp lực mua và bán (0-100)
+    - **Bollinger Bands (Dải Bollinger)**: Dải biến động đặt trên và dưới đường trung bình động
+    - **ATR (Biên độ thực trung bình)**: Chỉ báo biến động thị trường
+    - **Standard Deviation (Độ lệch chuẩn)**: Đo sự phân tán của dữ liệu so với giá trị trung bình
+    """
+    
+    indicator_help_text = indicator_help_en if lang == 'en' else indicator_help_vi
+    
+    if 'technical_indicators' not in metrics:
+        st.info(t.get("no_technical_data", "No technical indicator data available."))
+        return
+    
+    indicators = metrics.get('technical_indicators', {})
+    if not indicators:
+        st.info(t.get("no_technical_data", "No technical indicator data available."))
+        return
+    
+    # Create a layout for technical indicators
+    st.subheader(t_technical_analysis)
+    
+    # Organize indicators into categories
+    trend_indicators = ["SMA", "EMA", "MACD"]
+    momentum_indicators = ["RSI", "Stochastic", "MFI"]
+    volatility_indicators = ["Bollinger Bands", "ATR", "Standard Deviation"]
+    
+    col1, col2, col3 = st.columns(3)
+    
+    # Function to get signal text in the right language
+    def get_localized_signal(signal_text):
+        if signal_text == "Overbought":
+            return t_overbought
+        elif signal_text == "Oversold":
+            return t_oversold
+        elif signal_text == "Neutral":
+            return t_neutral
+        elif signal_text == "Bullish":
+            return t_bullish
+        elif signal_text == "Bearish":
+            return t_bearish
+        elif signal_text == "Info":
+            return t_info
+        elif signal_text == "Middle":
+            return t_middle
+        return signal_text
+    
+    # Display trend indicators
+    with col1:
+        st.markdown(f"**{t_trend_indicators}**")
+        for indicator in trend_indicators:
+            if indicator in indicators:
+                value = indicators[indicator]
+                signal = get_indicator_signal(indicator, value)
+                signal['text'] = get_localized_signal(signal['text'])
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: {signal['color']}15; border-left: 3px solid {signal['color']};">
+                    <span style="font-weight: 500;">{indicator}:</span> {value} 
+                    <span style="float: right; color: {signal['color']};">{signal['icon']} {signal['text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Display momentum indicators
+    with col2:
+        st.markdown(f"**{t_momentum_indicators}**")
+        for indicator in momentum_indicators:
+            if indicator in indicators:
+                value = indicators[indicator]
+                signal = get_indicator_signal(indicator, value)
+                signal['text'] = get_localized_signal(signal['text'])
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: {signal['color']}15; border-left: 3px solid {signal['color']};">
+                    <span style="font-weight: 500;">{indicator}:</span> {value} 
+                    <span style="float: right; color: {signal['color']};">{signal['icon']} {signal['text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Display volatility indicators
+    with col3:
+        st.markdown(f"**{t_volatility_indicators}**")
+        for indicator in volatility_indicators:
+            if indicator in indicators:
+                value = indicators[indicator]
+                signal = get_indicator_signal(indicator, value)
+                signal['text'] = get_localized_signal(signal['text'])
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: {signal['color']}15; border-left: 3px solid {signal['color']};">
+                    <span style="font-weight: 500;">{indicator}:</span> {value} 
+                    <span style="float: right; color: {signal['color']};">{signal['icon']} {signal['text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Add explanations
+    with st.expander(t_indicator_explanation):
+        st.markdown(indicator_help_text)
+
+def get_indicator_signal(indicator, value):
+    """Get the signal status for a technical indicator"""
+    result = {"icon": "", "text": "", "color": "#757575"}
+    
+    # Default case
+    try:
+        # Handle different indicators
+        if indicator == "RSI":
+            value = float(value)
+            if value >= 70:
+                result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+            elif value <= 30:
+                result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif indicator == "MACD":
+            if "bullish" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "bearish" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif "SMA" in indicator or "EMA" in indicator:
+            if "above" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "below" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        elif indicator == "Bollinger Bands":
+            if "upper" in str(value).lower():
+                result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+            elif "lower" in str(value).lower():
+                result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+            else:
+                result = {"icon": "↔️", "text": "Middle", "color": "#FF9800"}
+        
+        elif indicator == "Stochastic" or indicator == "MFI":
+            try:
+                if isinstance(value, str) and len(value.split()) > 0:
+                    value = float(value.split()[0])
+                else:
+                    value = float(value)
+                    
+                if value >= 80:
+                    result = {"icon": "↗️", "text": "Overbought", "color": "#F44336"}
+                elif value <= 20:
+                    result = {"icon": "↘️", "text": "Oversold", "color": "#4CAF50"}
+                else:
+                    result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+            except:
+                result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+        
+        elif indicator == "ATR" or indicator == "Standard Deviation":
+            # These are volatility indicators without direct signal interpretation
+            result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+            
+        elif "Trend" in indicator:
+            # For trend indicators that contain text descriptions
+            if "above" in str(value).lower():
+                result = {"icon": "↗️", "text": "Bullish", "color": "#4CAF50"}
+            elif "below" in str(value).lower():
+                result = {"icon": "↘️", "text": "Bearish", "color": "#F44336"}
+            else:
+                result = {"icon": "↔️", "text": "Neutral", "color": "#FF9800"}
+        
+        else:
+            # Generic handling for other indicators
+            result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+            
+    except Exception as e:
+        # If cannot parse, return default
+        print(f"Error processing indicator {indicator}: {e}")
+        result = {"icon": "ℹ️", "text": "Info", "color": "#1E88E5"}
+        
+    return result
+
+def multi_stock_analysis_page():
+    """Page for analyzing and comparing multiple stocks"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Create header
+    st.markdown(f"""
+    <div class="ai-agent-header">
+        <div class="ai-agent-logo pulse-element">📊</div>
+        <div class="ai-agent-title">
+            <h1>{t.get("multi_stock", "Multi-Stock Analysis")}</h1>
+            <p>{t.get("multi_stock_instruction", "Enter a query that mentions multiple stocks to analyze.")}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Input card
+    st.markdown("""
+    <div class="stCard" style="padding: 1.5rem;">
+    """, unsafe_allow_html=True)
+    
+    prompt = st.text_input(
+        "",
+        placeholder=t.get("multi_stock_placeholder", "E.g., 'Compare Tesla, Nvidia, and AMD stock forecasts for 20 days'"),
+        label_visibility="collapsed",
+        key="multi_stock_input"
+    )
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        confidence_interval = st.select_slider(
+            t.get("confidence_interval", "Confidence Interval"),
+            options=[50, 80, 90, 95],
+            value=st.session_state.get('confidence_interval', 80),
+            key="multi_ci_slider"
+        )
+        st.session_state['confidence_interval'] = confidence_interval
+    
+    with col2:
+        days_to_forecast = st.slider(
+            t.get("benchmark_days", "Forecast Days"),
+            min_value=5,
+            max_value=60,
+            value=15,
+            step=5,
+            key="multi_days_slider"
+        )
+    
+    st.markdown("""
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if prompt:
+        try:
+            # Custom loader
+            loader_placeholder = st.empty()
+            loader_placeholder.markdown(f"""
+            <div style="display: flex; align-items: center; margin: 20px 0; background-color: rgba(30, 136, 229, 0.1); padding: 15px; border-radius: 10px;">
+                <div style="margin-right: 15px; width: 30px; height: 30px; position: relative;">
+                    <div style="position: absolute; border: 3px solid rgba(30, 136, 229, 0.3); border-radius: 50%; height: 30px; width: 30px; animation: pulse 1.5s ease-out infinite;"></div>
+                    <div style="position: absolute; border: 3px solid rgba(30, 136, 229, 0.8); border-top-color: transparent; border-radius: 50%; height: 30px; width: 30px; animation: spin 1s linear infinite;"></div>
+                </div>
+                <div>
+                    <div style="font-weight: 500; margin-bottom: 3px;">{t.get("analyzing_stocks", "🧠 AI is analyzing multiple stocks...")}</div>
+                    <div style="font-size: 0.85rem; opacity: 0.8;">{t.get("processing_subtext", "Analyzing market data and generating AI predictions...")}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Call forecast agent
+            results = stock_forecast_agent(prompt)
+            
+            # Remove loader
+            loader_placeholder.empty()
+            
+            # Check if single or multiple stocks were returned
+            if isinstance(results, tuple):
+                st.warning(t.get("single_stock_detected", "Only one stock was detected. Switching to single stock view."))
+                forecast, historical_data, metrics = results
+                
+                # Display forecast for the single stock
+                display_metrics_dashboard(metrics)
+                
+                # Create tabs for different views
+                tab_labels = [
+                    t.get("forecast_chart", "Forecast Chart"), 
+                    t.get("data_tab", "Data"), 
+                    t.get("metrics_tab", "Metrics"),
+                    t.get("technical_indicators", "Technical Indicators")
+                ]
+                
+                chart_tab, data_tab, metrics_tab, technical_tab = st.tabs(tab_labels)
+                
+                with chart_tab:
+                    # Plot the forecast chart
+                    last_date = historical_data['ds'].iloc[-1]
+                    forecast_dates = [last_date + timedelta(days=i+1) for i in range(len(forecast))]
+                    plot_forecast_chart(
+                        historical_data, 
+                    forecast, 
+                    forecast_dates, 
+                        metrics.get('actual_symbol', metrics.get('requested_symbol')),
+                    confidence_interval
+                )
+                    
+                # Add chart interactivity guidance
+                st.markdown(f"""
+                <div style="background-color: rgba(30, 136, 229, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px;">
+                    <small>💡 {t.get('chart_tip', 'Tip: Use mouse to zoom, pan, and hover for precise values. Double-click to reset view.')}</small>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with data_tab:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader(t.get("historical_data_title", "Historical Data (Last 10 days)"))
+                        historical_display = historical_data.tail(10).reset_index(drop=True)
+                        historical_display = historical_display.rename(columns={
+                            'ds': t.get('date', 'Date'),
+                            'y': t.get('price', 'Price')
+                        })
+                        st.dataframe(historical_display, use_container_width=True)
+                        
+                    with col2:
+                        st.subheader(t.get("forecast_data", "Forecast Data"))
+                        forecast_df = pd.DataFrame({
+                            t.get("date", "Date"): forecast_dates,
+                            t.get("lower_bound", "Lower Bound"): forecast["forecast_lower"],
+                            t.get("median_forecast", "Median Forecast"): forecast["forecast_median"],
+                            t.get("upper_bound", "Upper Bound"): forecast["forecast_high"]
+                        })
+                        st.dataframe(forecast_df, use_container_width=True)
+                
+                with metrics_tab:
+                    if metrics:
+                        display_ai_analysis(metrics)
+                
+                with technical_tab:
+                    if 'technical_indicators' in metrics:
+                        display_technical_indicators(metrics)
+    else:
+                        # Create technical indicators on-the-fly if not in metrics
+                        st.info(t.get("no_technical_data", "No technical indicator data available for this forecast."))
+            
+            else:
+                # Multiple stocks case
+                # We got a dictionary of results: {symbol: (forecast, historical, metrics)}
+                symbols = list(results.keys())
+                num_stocks = len(symbols)
+                
+                # Success message with animation
+                st.markdown(f"""
+                <div style="background-color: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #4CAF50; animation: slide-in 0.5s ease-out;">
+                    <div style="font-weight: 500; color: #4CAF50;">
+                        ✅ {t.get('analyzed', 'Analyzed')} {num_stocks} {t.get('stocks', 'stocks')} {t.get('in_parallel', 'in parallel')}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Create tabs for comparison vs individual analysis
+                compare_tab, individual_tab = st.tabs([
+                    t.get("comparison_chart", "Comparison Chart"),
+                    t.get("individual_forecasts", "Individual Forecasts")
+                ])
+                
+                with compare_tab:
+                    # Create comparison chart showing % change for all stocks
+                    st.subheader(t.get("comparison_title", "Comparison of Forecasted % Change"))
+                    
+                    # Prepare data for comparison chart
+                    comparison_data = []
+                    
+                    for symbol, (forecast, historical, metrics) in results.items():
+                        if forecast is not None and historical is not None and not historical.empty and not forecast.empty:
+                            # Calculate % change from last actual price
+                            last_price = historical['y'].iloc[-1]
+                            
+                            # Create forecast dates
+                            last_date = historical['ds'].iloc[-1]
+                            forecast_dates = [last_date + timedelta(days=i+1) for i in range(len(forecast))]
+                            
+                            # Calculate percentage changes for median forecast
+                            percent_changes = [(price / last_price - 1) * 100 for price in forecast['forecast_median']]
+                            
+                            # Add to comparison data
+                            for date, pct_change in zip(forecast_dates, percent_changes):
+                                comparison_data.append({
+                                    'Symbol': metrics.get('actual_symbol', symbol),
+                                    'Date': date,
+                                    'Percent Change': pct_change
+                                })
+                        else:
+                            st.warning(f"{t.get('no_valid_data', 'No valid data for')} {symbol}")
+                    
+                    if comparison_data:
+                        # Create comparison dataframe
+                        comparison_df = pd.DataFrame(comparison_data)
+                        
+                        # Plot with Plotly
+                        fig = px.line(
+                            comparison_df, 
+                            x='Date', 
+                            y='Percent Change', 
+                            color='Symbol',
+                            title=t.get("comparison", "Comparison"),
+                            labels={'Percent Change': t.get('predicted_change', 'Predicted Change (%)'), 'Date': t.get('date', 'Date')}
+                        )
+                        
+                        # Add zero line
+                        fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                        
+                        # Customize
+                        fig.update_layout(
+                            legend_title_text='',
+                            xaxis_title=t.get('date', 'Date'),
+                            yaxis_title=t.get('predicted_change', 'Predicted Change (%)'),
+                            hovermode="x unified"
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Explanation
+                        st.markdown(t.get("chart_explanation", "**Chart shows predicted percentage change from last closing price.**\nPositive values indicate expected growth, negative values indicate expected decline."))
+                    else:
+                        st.error(t.get("no_valid_data", "No valid data for comparison"))
+                
+                with individual_tab:
+                    # Create multiselect to choose which stock to view
+                    selected_symbol = st.selectbox(
+                        t.get("stock_symbol", "Stock Symbol"),
+                        options=symbols,
+                        format_func=lambda x: results[x][2].get('actual_symbol', x)
+                    )
+                    
+                    if selected_symbol:
+                        forecast, historical_data, metrics = results[selected_symbol]
+                        
+                        if forecast is not None and historical_data is not None:
+                            # Display metrics
+                            display_metrics_dashboard(metrics)
+                            
+                            # Create tabs for different views
+                            tab_labels = [
+                                t.get("forecast_chart", "Forecast Chart"), 
+                                t.get("data_tab", "Data"), 
+                                t.get("metrics_tab", "Metrics"),
+                                t.get("technical_indicators", "Technical Indicators")
+                            ]
+                            
+                            s_chart_tab, s_data_tab, s_metrics_tab, s_technical_tab = st.tabs(tab_labels)
+                            
+                            with s_chart_tab:
+                                # Plot individual forecast chart
+                                last_date = historical_data['ds'].iloc[-1]
+                                forecast_dates = [last_date + timedelta(days=i+1) for i in range(len(forecast))]
+                                plot_forecast_chart(
+                                    historical_data, 
+                                    forecast, 
+                                    forecast_dates, 
+                                    metrics.get('actual_symbol', selected_symbol),
+                                    confidence_interval
+                                )
+                            
+                            with s_data_tab:
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.subheader(t.get("historical_data_title", "Historical Data (Last 10 days)"))
+                                    historical_display = historical_data.tail(10).reset_index(drop=True)
+                                    historical_display = historical_display.rename(columns={
+                                        'ds': t.get('date', 'Date'),
+                                        'y': t.get('price', 'Price')
+                                    })
+                                    st.dataframe(historical_display, use_container_width=True)
+    
+                                with col2:
+                                    st.subheader(t.get("forecast_data", "Forecast Data"))
+                                    forecast_df = pd.DataFrame({
+                                        t.get("date", "Date"): forecast_dates,
+                                        t.get("lower_bound", "Lower Bound"): forecast["forecast_lower"],
+                                        t.get("median_forecast", "Median Forecast"): forecast["forecast_median"],
+                                        t.get("upper_bound", "Upper Bound"): forecast["forecast_high"]
+                                    })
+                                    st.dataframe(forecast_df, use_container_width=True)
+                            
+                            with s_metrics_tab:
+                                if metrics:
+                                    display_ai_analysis(metrics)
+                            
+                            with s_technical_tab:
+                                if 'technical_indicators' in metrics:
+                                    display_technical_indicators(metrics)
+                                else:
+                                    # Create technical indicators on-the-fly if not in metrics
+                                    st.info(t.get("no_technical_data", "No technical indicator data available for this forecast."))
+        
+        except Exception as e:
+            st.error(f"{t.get('multi_stock_error', 'Error processing multi-stock forecast:')} {str(e)}")
+            with st.expander(t.get("error_details", "Error Details")):
+                st.code(traceback.format_exc(), language="python")
+
+def about_page():
+    """About page with information about the app"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Create header
+    st.markdown(f"""
+    <div class="ai-agent-header">
+        <div class="ai-agent-logo pulse-element">ℹ️</div>
+        <div class="ai-agent-title">
+            <h1>{t.get("about_title", "About AI Stock Forecaster")}</h1>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Overview section
+    st.markdown(f"""
+    <div class="stCard" style="padding: 1.5rem;">
+        <h3>{t.get("overview", "Overview")}</h3>
+        <p>{t.get("overview_text", "AI Stock Forecaster is an advanced tool that combines the power of large language models and time-series forecasting to predict stock prices. The application is built on a modern tech stack with a focus on performance and user experience.")}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Key features section
+    st.markdown(f"""
+    <div class="stCard" style="padding: 1.5rem;">
+        <h3>{t.get("key_features", "Key Features")}</h3>
+        <ul>
+            <li>{t.get("feature_1", "Natural Language Interface: Simply ask for forecasts in plain language")}</li>
+            <li>{t.get("feature_2", "Advanced Forecasting Model: Uses Amazon's Chronos model for probabilistic forecasting")}</li>
+            <li>{t.get("feature_3", "Multiple Stock Analysis: Compare forecasts across different companies")}</li>
+            <li>{t.get("feature_4", "Performance Metrics: Evaluate forecast accuracy with MAE, RMSE, and direction accuracy")}</li>
+            <li>{t.get("feature_5", "Interactive Visualizations: Explore forecasts with detailed interactive charts")}</li>
+            <li>{t.get("feature_6", "Vietnamese Stock Support: Includes support for Vietnamese market stocks")}</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create two columns for Tech Stack and How it Works
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Technology Stack
+        st.markdown(f"""
+        <div class="stCard" style="padding: 1.5rem;">
+            <h3>{t.get("tech_stack", "Technology Stack")}</h3>
+            <ul>
+                <li>{t.get("tech_1", "Frontend: Streamlit with custom CSS for modern UI")}</li>
+                <li>{t.get("tech_2", "AI Agent: Ollama with Llama3 for local LLM inference")}</li>
+                <li>{t.get("tech_3", "Forecasting: Chronos (Amazon's time series forecasting model)")}</li>
+                <li>{t.get("tech_4", "Data Source: Yahoo Finance API")}</li>
+                <li>{t.get("tech_5", "Performance Optimization: Caching, batch processing, and hardware acceleration")}</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # How it Works
+        st.markdown(f"""
+        <div class="stCard" style="padding: 1.5rem;">
+            <h3>{t.get("how_it_works", "How It Works")}</h3>
+            <ol>
+                <li>{t.get("how_1", "User Input: The user enters a natural language query about stock forecasts")}</li>
+                <li>{t.get("how_2", "AI Agent Processing: Ollama extracts stock symbols and prediction days")}</li>
+                <li>{t.get("how_3", "Data Retrieval: Historical stock data is fetched from Yahoo Finance API")}</li>
+                <li>{t.get("how_4", "Model Forecasting: The Chronos model generates probabilistic forecasts")}</li>
+                <li>{t.get("how_5", "Visualization: Results are displayed with interactive charts and metrics")}</li>
+            </ol>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Performance Improvements
+    st.markdown(f"""
+    <div class="stCard" style="padding: 1.5rem;">
+        <h3>{t.get("performance", "Performance Improvements")}</h3>
+        <ul>
+            <li>{t.get("perf_1", "Caching: Model and data caching to reduce redundant operations")}</li>
+            <li>{t.get("perf_2", "Batch Processing: Parallel processing for multiple stocks")}</li>
+            <li>{t.get("perf_3", "Hardware Acceleration: Automatic detection of available GPUs/accelerators")}</li>
+            <li>{t.get("perf_4", "Response Time Optimization: Streamlined processing pipeline")}</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Data Sources
+    st.markdown(f"""
+    <div class="stCard" style="padding: 1.5rem;">
+        <h3>{t.get("data_sources", "Data Sources")}</h3>
+        <p>{t.get("data_sources_text", "The application uses a tiered approach to retrieve stock data...")}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Footer
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 30px; opacity: 0.8;">
+        <p>{t.get("created_by", "Created by:")} The Financial AI Lab</p>
+        <p>{t.get("version", "Version:")} {t.get("version_text", "2.1.0 (Enhanced Edition)")}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def benchmark_page():
+    """Page for benchmarking forecast performance"""
+    lang = st.session_state['language']
+    t = translations[lang]
+    
+    # Create header
+    st.markdown(f"""
+    <div class="ai-agent-header">
+        <div class="ai-agent-logo pulse-element">🧪</div>
+        <div class="ai-agent-title">
+            <h1>{t.get("benchmark_title", "Forecast Performance Benchmarks")}</h1>
+            <p>{t.get("benchmark_subtitle", "Compare historical and real-time forecasting performance")}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Test configuration card
+    st.markdown("""
+    <div class="stCard" style="padding: 1.5rem;">
+    """, unsafe_allow_html=True)
+    
+    # Set up benchmark form
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        benchmark_symbols = st.multiselect(
+            t.get("benchmark_stocks", "Benchmark Stocks"),
+            options=["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "VIC.VN", "VNM.VN", "FPT.VN"],
+            default=["AAPL", "MSFT"],
+            help="Select stocks to benchmark forecast performance"
+        )
+    
+    with col2:
+        benchmark_days = st.slider(
+            t.get("benchmark_days", "Forecast Days"),
+            min_value=5,
+            max_value=60,
+            value=15,
+            step=5
+        )
+    
+    with col3:
+        history_days = st.slider(
+            t.get("benchmark_history", "Historical Days"),
+            min_value=30,
+            max_value=365,
+            value=180,
+            step=30
+        )
+    
+    # Benchmark controls
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        compare_to_baseline = st.checkbox(
+            t.get("compare_to_baseline", "Compare with Baseline"),
+            value=True,
+            help="Compare with naive forecasting methods like last value and mean"
+        )
+    
+    # Run benchmark button with proper styling
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        run_benchmark = st.button(
+            t.get("run_benchmark", "Run Benchmark Test"),
+            type="primary",
+            use_container_width=True
+        )
+    
+    st.markdown("""
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Preset stock categories
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"### {t.get('common_stocks', 'Common Stocks')}")
+        if st.button("AAPL, MSFT, GOOGL, AMZN"):
+            benchmark_symbols = ["AAPL", "MSFT", "GOOGL", "AMZN"]
+            st.session_state['benchmark_symbols'] = benchmark_symbols
+            st.rerun()
+    
+    with col2:
+        st.markdown(f"### {t.get('vietnamese_stocks', 'Vietnamese Stocks')}")
+        if st.button("VIC.VN, VNM.VN, FPT.VN"):
+            benchmark_symbols = ["VIC.VN", "VNM.VN", "FPT.VN"]
+            st.session_state['benchmark_symbols'] = benchmark_symbols
+            st.rerun()
+    
+    # Run the benchmark if button is clicked
+    if run_benchmark and benchmark_symbols:
+        # Progress indicators
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Show running message
+        status_text.markdown(f"**{t.get('benchmark_running', 'Running benchmarks...')}**")
+        
+        # Collect benchmark results
+        benchmark_results = []
+        
+        # For each symbol, run a benchmark
+        for i, symbol in enumerate(benchmark_symbols):
+            try:
+                # Update progress
+                progress = (i / len(benchmark_symbols))
+                progress_bar.progress(progress)
+                status_text.markdown(f"**{t.get('benchmark_running', 'Running benchmarks...')}** {symbol}")
+                
+                # Get forecast for the symbol
+                start_time = time.time()
+                forecast, historical, metrics = get_stock_forecast(symbol, benchmark_days)
+                end_time = time.time()
+                
+                # Calculate processing time in milliseconds
+                processing_time = (end_time - start_time) * 1000
+                
+                # Append to results
+                benchmark_results.append({
+                    'symbol': metrics.get('actual_symbol', symbol),
+                    'mae': metrics.get('mae', 'N/A'),
+                    'rmse': metrics.get('rmse', 'N/A'),
+                    'mape': metrics.get('mape', 'N/A'),
+                    'direction_accuracy': metrics.get('direction_accuracy', 'N/A'),
+                    'processing_time': processing_time,
+                    'validation_status': metrics.get('validation_status', 'unknown'),
+                    'data_source': os.environ.get("DATA_SOURCE_USED", "unknown")
+                })
+                
+            except Exception as e:
+                # Record error
+                benchmark_results.append({
+                    'symbol': symbol,
+                    'mae': 'Error',
+                    'rmse': 'Error',
+                    'mape': 'Error',
+                    'direction_accuracy': 'Error',
+                    'processing_time': 0,
+                    'validation_status': 'failed',
+                    'data_source': 'N/A',
+                    'error': str(e)
+                })
+        
+        # Update progress to completion
+        progress_bar.progress(1.0)
+        status_text.markdown(f"**✅ {t.get('benchmark_complete', 'Benchmark complete!')}**")
+        
+        # Display results in a table
+        st.subheader(t.get("performance_metrics", "Performance Metrics"))
+        
+        # Create DataFrame from results
+        df_results = pd.DataFrame(benchmark_results)
+        
+        # Format columns
+        if not df_results.empty:
+            # Format numeric columns
+            for col in ['mae', 'rmse', 'mape', 'direction_accuracy']:
+                if col in df_results.columns:
+                    df_results[col] = df_results[col].apply(
+                        lambda x: f"{float(x):.4f}" if isinstance(x, (int, float)) else x
+                    )
+            
+            # Format processing time
+            if 'processing_time' in df_results.columns:
+                df_results['processing_time'] = df_results['processing_time'].apply(
+                    lambda x: f"{int(x)}" if isinstance(x, (int, float)) else x
+                )
+            
+            # Rename columns for display
+            df_display = df_results.rename(columns={
+                'symbol': t.get('benchmark_symbol', 'Symbol'),
+                'mae': t.get('benchmark_mae', 'Mean Absolute Error'),
+                'rmse': t.get('benchmark_rmse', 'Root Mean Square Error'),
+                'mape': t.get('benchmark_mape', 'Mean Absolute % Error'),
+                'direction_accuracy': t.get('benchmark_direction', 'Direction Accuracy'),
+                'processing_time': t.get('benchmark_time', 'Processing Time (ms)'),
+                'validation_status': t.get('benchmark_validation', 'Validation Status'),
+                'data_source': t.get('benchmark_data_source', 'Data Source')
+            })
+            
+            # Display table
+            st.dataframe(df_display, use_container_width=True)
+    
+                    else:
+        # Display instructions when no benchmark has been run
+        st.info(t.get("benchmark_no_data", "No benchmark data available yet. Run a benchmark test to see results."))
+
+# Main application - Add this at the end of the file
+if __name__ == '__main__':
+    # Create sidebar for settings and information
+    with st.sidebar:
+        # Modern sidebar header with logo
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+            <div style="background: linear-gradient(135deg, #1E88E5, #7B1FA2); width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 1.8rem;">📈</span>
+            </div>
+            <div style="margin-left: 10px;">
+                <h3 style="margin: 0; padding: 0; font-size: 1.2rem;">AI Stock Agent</h3>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get current language
+        lang = st.session_state['language']
+        t = translations[lang]
+        
+        st.markdown(f"### {t['settings']}")
+        
+        # Modern language selector
+        st.markdown(f"**{t['language']}:**")
+        
+        # Create a modern language toggle button
+        current_lang = "🇺🇸 English" if lang == 'en' else "🇻🇳 Tiếng Việt"
+        switch_to = "🇻🇳 Tiếng Việt" if lang == 'en' else "🇺🇸 English"
+        
+        st.markdown(f"""
+        <div class="language-toggle" onclick="changeLanguage()" id="language-toggle">
+            <span class="language-icon">{current_lang[0:4]}</span>
+            <span>{current_lang[5:]}</span>
+            <span style="margin-left: 8px; font-size: 0.8rem;">→ {switch_to}</span>
+        </div>
+        
+        <script>
+            function changeLanguage() {{
+                // This script is just for visual effect, the actual change happens through Streamlit
+                const toggle = document.getElementById('language-toggle');
+                toggle.classList.add('pulse-element');
+                setTimeout(() => toggle.form.submit(), 300);
+            }}
+        </script>
+        """, unsafe_allow_html=True)
+        
+        # Actual language toggle button (hidden visually but functional)
+        if st.button("Switch Language", key="lang_switch_btn", help="Toggle between English and Vietnamese"):
+                # Toggle language and update environment variable
+                st.session_state['language'] = 'vi' if st.session_state['language'] == 'en' else 'en'
+            os.environ["LANGUAGE"] = st.session_state['language']
+                st.rerun()
+        
+        # Navigation with improved styling
+        st.markdown("### " + t["navigate"])
+        
+        # Format navigation options with icons
+        nav_options = {
+            t["forecast"]: "📊",
+            t["multi_stock"]: "📈",
+            t.get("benchmark_title", "Benchmarks"): "🧪",
+            t["about"]: "ℹ️"
+        }
+        
+        page = st.radio(
+            "",
+            list(nav_options.keys()),
+            format_func=lambda x: f"{nav_options[x]} {x}",
+            label_visibility="collapsed"
+        )
+        
+        # System information
+        with st.expander(t.get("system_info", "System Information")):
+            # Device info
+            device_info = check_device_compatibility()
+            
+            # Show device being used
+            if "gpu" in device_info.lower():
+                st.markdown(f"🚀 **{device_info}**")
+            else:
+                st.markdown(f"💻 **{device_info}**")
+                
+            # Check Ollama
+            ollama_status = check_ollama_installation()
+            
+            # Show basic system info
+            st.markdown(f"""
+            **Python:** {sys.version.split()[0]}  
+            **Forecast Model:** Chronos {ChronosPipeline.__version__ if hasattr(ChronosPipeline, '__version__') else 'N/A'}  
+            **OS:** {os.name.upper()}
+            """)
+        
+        # Add data source info
+        sidebar_data_source_info()
+        
+        # Add a small footer
+        st.markdown("""
+        <div style="position: fixed; bottom: 20px; left: 20px; opacity: 0.7; font-size: 0.8rem;">
+            AI Stock Forecaster v2.1.0<br>© 2023-2024
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Render selected page
+    if page == t["forecast"]:
+        main_forecast_page()
+    elif page == t["multi_stock"]:
+        multi_stock_analysis_page()
+    elif page == t.get("benchmark_title", "Benchmarks"):
+        benchmark_page()
+    else:
+        about_page()

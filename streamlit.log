@@ -1,0 +1,41 @@
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.9:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+2025-04-26 10:50:13.982 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:50:14.082 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:50:32.343 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:50:32.442 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:50:32.744 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+Passing a tuple of `past_key_values` is deprecated and will be removed in Transformers v4.48.0. You should pass an instance of `EncoderDecoderCache` instead, e.g. `past_key_values=EncoderDecoderCache.from_legacy_cache(past_key_values)`.
+2025-04-26 10:51:45.450 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+OMP: Warning #191: Forking a process while a parallel region is active is potentially unsafe.
+2025-04-26 10:51:45.580 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:51:51.136 Serialization of dataframe to Arrow table was unsuccessful due to: ("Expected bytes, got a 'int' object", 'Conversion failed for column Value with type object'). Applying automatic fixes for column types to make the dataframe Arrow-compatible.
+2025-04-26 10:51:51.140 Serialization of dataframe to Arrow table was unsuccessful due to: ("Could not convert 'completed' with type str: tried to convert to int64", 'Conversion failed for column Value with type object'). Applying automatic fixes for column types to make the dataframe Arrow-compatible.
+2025-04-26 10:52:05.003 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:52:05.105 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:52:05.221 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:52:05.347 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:52:15.730 Serialization of dataframe to Arrow table was unsuccessful due to: ("Expected bytes, got a 'int' object", 'Conversion failed for column Value with type object'). Applying automatic fixes for column types to make the dataframe Arrow-compatible.
+2025-04-26 10:52:15.738 Serialization of dataframe to Arrow table was unsuccessful due to: ("Could not convert 'completed' with type str: tried to convert to int64", 'Conversion failed for column Value with type object'). Applying automatic fixes for column types to make the dataframe Arrow-compatible.
+2025-04-26 10:52:59.490 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:52:59.596 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:01.821 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:01.931 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:03.154 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:03.236 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:05.133 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:05.318 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:06.317 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+2025-04-26 10:53:06.381 `label` got an empty value. This is discouraged for accessibility reasons and may be disallowed in the future by raising an exception. Please provide a non-empty label and hide it with label_visibility if needed.
+500 Server Error: Internal Server Error for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/VCB.VN?modules=financialData%2CquoteType%2CdefaultKeyStatistics%2CassetProfile%2CsummaryDetail&corsDomain=finance.yahoo.com&formatted=false&symbol=VCB.VN&crumb=YIx44uCFMQE
+500 Server Error: Internal Server Error for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/VCB.VN?modules=financialData%2CquoteType%2CdefaultKeyStatistics%2CassetProfile%2CsummaryDetail&corsDomain=finance.yahoo.com&formatted=false&symbol=VCB.VN&crumb=YIx44uCFMQE
+500 Server Error: Internal Server Error for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/VCB.VN?modules=financialData%2CquoteType%2CdefaultKeyStatistics%2CassetProfile%2CsummaryDetail&corsDomain=finance.yahoo.com&formatted=false&symbol=VCB.VN&crumb=YIx44uCFMQE
